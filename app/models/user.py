@@ -39,3 +39,12 @@ class User(Base, TimestampMixin):
         default_factory=list,
         init=False,
     )
+    
+    # One-to-many relationship with Notification
+    notifications: Mapped[List["Notification"]] = relationship(
+        "Notification",
+        back_populates="user",
+        default_factory=list,
+        init=False,
+        cascade="all, delete-orphan",
+    )

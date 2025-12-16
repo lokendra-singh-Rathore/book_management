@@ -12,6 +12,7 @@ from app.core.security import (
     decode_token,
 )
 from app.core.exceptions import UnauthorizedError, ConflictError, ValidationError
+from app.services.event_service import event_service
 
 
 class AuthService:
@@ -46,7 +47,16 @@ class AuthService:
             full_name=user_data.full_name,
         )
         
-        return await self.user_repo.create(user)
+        user = await self.user_repo.create(user)
+        
+        # Publish event
+        await event_service.publish_user_registered(
+            user_id=user.id,
+            email=user.email,
+            full_name=user.full_name
+        )
+        
+        return user
     
     async def authenticate_user(self, email: str, password: str) -> User:
         """
@@ -72,6 +82,12 @@ class AuthService:
         
         if not user.is_active:
             raise UnauthorizedError(detail="User account is inactive")
+        
+        # Publish login event
+        await event_service.publish_user_login(
+            user_id=user.id,
+            email=user.email
+        )
         
         return user
     

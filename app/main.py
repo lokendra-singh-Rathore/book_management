@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.middleware.logging import LoggingMiddleware
 from app.api.v1 import api_router
+from app.events.producer import kafka_producer
+from app.chat.redis_client import redis_client
 
 
 @asynccontextmanager
@@ -19,16 +21,45 @@ async def lifespan(app: FastAPI):
     print(f"📊 Debug mode: {settings.DEBUG}")
     print(f"🔗 Database: {settings.DATABASE_URL.split('@')[-1]}")  # Hide credentials
     
+    # Initialize Kafka producer
+    if settings.KAFKA_ENABLE:
+        try:
+            await kafka_producer.start()
+            print(f"✅ Kafka producer connected: {settings.KAFKA_BOOTSTRAP_SERVERS}")
+        except Exception as e:
+            print(f"⚠️ Kafka producer failed to start: {e}")
+            print("   Application will continue without Kafka messaging")
+    else:
+        print("ℹ️  Kafka messaging is disabled")
+    
+    # Initialize Redis client
+    if settings.REDIS_ENABLE:
+        try:
+            await redis_client.connect()
+        except Exception as e:
+            print(f"⚠️ Redis connection failed: {e}")
+            print("   Chat features may be limited")
+    else:
+        print("ℹ️  Redis is disabled")
+    
     yield
     
     # Shutdown
+    if settings.KAFKA_ENABLE:
+        await kafka_producer.stop()
+        print("🛑 Kafka producer stopped")
+    
+    if settings.REDIS_ENABLE:
+        await redis_client.disconnect()
+        print("🛑 Redis disconnected")
+    
     print(f"👋 Shutting down {settings.APP_NAME}")
 
 
 # Create FastAPI application
 app = FastAPI(
     title=settings.APP_NAME,
-    description="Production-ready Book Management API with SQLAlchemy 2.0",
+    description="Production-ready Book Management API with SQLAlchemy 2.0 and Kafka Messaging",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -57,6 +88,7 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/health",
+        "kafka_enabled": settings.KAFKA_ENABLE,
     }
 
 
@@ -66,4 +98,6 @@ async def health_check():
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
+        "kafka_enabled": settings.KAFKA_ENABLE,
+        "kafka_connected": kafka_producer._producer is not None if settings.KAFKA_ENABLE else False,
     }

@@ -531,52 +531,37 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 ```
 
-### Docker (Optional)
+### Running with Docker
 
-Example `Dockerfile`:
+This application is fully containerized and easy to run with Docker Compose.
 
-```dockerfile
-FROM python:3.11-slim
+1. **Install Docker and Docker Compose** if you haven't already.
 
-WORKDIR /app
+2. **Configure Environment**:
+   Ensure you have a `.env` file created from `.env.example` (or just use the example for development).
+   ```bash
+   cp .env.example .env
+   ```
+   *Note: For Docker, the `DATABASE_URL` in `.env` should ideally use `postgres` as the host (e.g., `postgres:5432`), which matches the internal service name. If you are running the app locally (outside Docker), use `localhost`.*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+3. **Start the Application**:
+   ```bash
+   docker-compose up --build
+   ```
 
-COPY . .
+   This command will start the following services:
+   - **api**: The FastAPI application (Port 8000)
+   - **postgres**: PostgreSQL database (External Port 5435, Internal 5432)
+   - **kafka & zookeeper**: Message queue services
+   - **redis**: Cache for chat features
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
+4. **Automatic Migrations**:
+   The Docker container is configured to **automatically run database migrations** (`alembic upgrade head`) every time it starts. You do not need to run them manually.
 
-Example `docker-compose.yml`:
-
-```yaml
-version: '3.8'
-
-services:
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: book_management
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  api:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:password@db:5432/book_management
-    depends_on:
-      - db
-
-volumes:
-  postgres_data:
-```
+5. **Access the App**:
+   - API: http://localhost:8000
+   - Swagger Docs: http://localhost:8000/docs
+   - Database (External): localhost:5435
 
 ## Testing (Setup Ready)
 

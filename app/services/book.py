@@ -7,6 +7,7 @@ from app.schemas.book import BookCreate, BookUpdate, PaginatedBooksResponse, Boo
 from app.repositories.book import BookRepository
 from app.repositories.user import UserRepository
 from app.core.exceptions import NotFoundError, ForbiddenError
+from app.services.event_service import event_service
 
 
 class BookService:
@@ -39,7 +40,18 @@ class BookService:
         # Add user to book's users
         book.users.append(user)
         
-        return await self.book_repo.create(book)
+        book = await self.book_repo.create(book)
+        
+        # Publish event
+        await event_service.publish_book_created(
+            book_id=book.id,
+            title=book.title,
+            author=book.author,
+            isbn=book.isbn,
+            user_id=user.id
+        )
+        
+        return book
     
     async def get_book(self, book_id: int) -> Book:
         """
@@ -145,7 +157,19 @@ class BookService:
         for field, value in update_data.items():
             setattr(book, field, value)
         
-        return await self.book_repo.update(book)
+        book = await self.book_repo.update(book)
+        
+        # Publish event
+        await event_service.publish_book_updated(
+            book_id=book.id,
+            title=book.title,
+            author=book.author,
+            isbn=book.isbn,
+            user_id=user.id,
+            changes=update_data
+        )
+        
+        return book
     
     async def delete_book(self, book_id: int, user: User) -> None:
         """
@@ -167,7 +191,19 @@ class BookService:
         if user not in book.users:
             raise ForbiddenError(detail="You don't have access to this book")
         
+        # Store book info before deletion
+        book_title = book.title
+        book_author = book.author
+        
         await self.book_repo.delete(book)
+        
+        # Publish event
+        await event_service.publish_book_deleted(
+            book_id=book_id,
+            title=book_title,
+            author=book_author,
+            user_id=user.id
+        )
     
     async def add_user_to_book(self, book_id: int, user_id: int, current_user: User) -> Book:
         """
@@ -202,6 +238,16 @@ class BookService:
         if user_to_add not in book.users:
             book.users.append(user_to_add)
             await self.book_repo.update(book)
+            
+            # Publish event
+            await event_service.publish_book_shared(
+                book_id=book.id,
+                title=book.title,
+                author=book.author,
+                owner_user_id=current_user.id,
+                shared_with_user_id=user_to_add.id,
+                shared_with_email=user_to_add.email
+            )
         
         return book
     
@@ -238,5 +284,14 @@ class BookService:
         if user_to_remove in book.users:
             book.users.remove(user_to_remove)
             await self.book_repo.update(book)
+            
+            # Publish event
+            await event_service.publish_book_unshared(
+                book_id=book.id,
+                title=book.title,
+                author=book.author,
+                owner_user_id=current_user.id,
+                removed_user_id=user_to_remove.id
+            )
         
         return book
